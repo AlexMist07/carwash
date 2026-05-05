@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Car Wash — Ticket</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="ticket-page">
+
+  <div class="ticket-container">
+
+    <div class="ticket-header">
+      <h1>🚗 El Punto Car Wash</h1>
+      <p class="ticket-subtitle">Comprobante de servicio</p>
+    </div>
+
+    <div class="ticket-folio">
+      <span>FOLIO</span>
+      <strong id="t-folio">#000</strong>
+    </div>
+
+    <div class="ticket-body">
+      <div class="ticket-fila">
+        <span>Fecha y hora</span>
+        <strong id="t-fecha"></strong>
+      </div>
+      <div class="ticket-fila">
+        <span>Placa</span>
+        <strong id="t-placa"></strong>
+      </div>
+      <div class="ticket-fila">
+        <span>Vehículo</span>
+        <strong id="t-vehiculo"></strong>
+      </div>
+      <div class="ticket-fila">
+        <span>Modalidad</span>
+        <strong id="t-modalidad"></strong>
+      </div>
+      <div class="ticket-fila">
+        <span>Precio base</span>
+        <strong id="t-base"></strong>
+      </div>
+    </div>
+
+    <div class="ticket-extras" id="ticket-extras-section">
+      <p class="extras-titulo">Servicios extra</p>
+      <div id="t-extras-lista"></div>
+    </div>
+
+    <div class="ticket-total">
+      <span>TOTAL</span>
+      <strong id="t-total"></strong>
+    </div>
+
+    <div class="ticket-acciones">
+      <button onclick="window.print()">🖨️ Imprimir</button>
+      <button class="btn-secundario" onclick="window.location.href='cobro.html'">➕ Nuevo ticket</button>
+    </div>
+
+  </div>
+
+  <script>
+    const data = JSON.parse(localStorage.getItem('ultimo_ticket'));
+
+    if (!data) {
+      window.location.href = 'cobro.html';
+    } else {
+      document.getElementById('t-folio').textContent   = '#' + String(data.folio).padStart(4, '0');
+      document.getElementById('t-placa').textContent   = data.placa.toUpperCase();
+      document.getElementById('t-vehiculo').textContent = data.vehiculo;
+      document.getElementById('t-modalidad').textContent = data.modalidad;
+      document.getElementById('t-base').textContent    = '$' + parseFloat(data.precioBase).toFixed(2);
+      document.getElementById('t-total').textContent   = '$' + parseFloat(data.total).toFixed(2);
+
+      // Fecha legible
+      const fecha = new Date(data.fecha);
+      document.getElementById('t-fecha').textContent = fecha.toLocaleString('es-MX');
+
+      // Extras
+      const listaExtras = document.getElementById('t-extras-lista');
+      if (data.extras && data.extras.length > 0) {
+        data.extras.forEach(e => {
+          const div = document.createElement('div');
+          div.className = 'ticket-fila';
+          div.innerHTML = `<span>${e.descripcion}</span><strong>$${parseFloat(e.precioFijo).toFixed(2)}</strong>`;
+          listaExtras.appendChild(div);
+        });
+      } else {
+        document.getElementById('ticket-extras-section').style.display = 'none';
+      }
+    }
+  </script>
+
+</body>
+</html>

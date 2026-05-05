@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Car Wash — Cobro</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="cobro-page">
+
+  <div class="cobro-container">
+    <div class="cobro-header">
+      <h1>🚗 El Punto Car Wash</h1>
+      <button id="btn-logout">Cerrar sesión</button>
+    </div>
+
+    <!-- PASO 1: Vehículo -->
+    <div class="card">
+      <h2>1. Tipo de vehículo</h2>
+      <select id="select-categoria">
+        <option value="">-- Selecciona --</option>
+      </select>
+    </div>
+
+    <!-- PASO 2: Modalidad -->
+    <div class="card">
+      <h2>2. Modalidad de lavado</h2>
+      <div id="modalidades" class="botones-grupo"></div>
+    </div>
+
+    <!-- PASO 3: Extras -->
+    <div class="card">
+      <h2>3. Servicios extra</h2>
+      <div id="extras-lista" class="extras-grid"></div>
+    </div>
+
+    <!-- PASO 4: Placa y total -->
+    <div class="card">
+      <h2>4. Datos finales</h2>
+      <div class="form-group">
+        <label>Placa del vehículo</label>
+        <input type="text" id="input-placa" placeholder="Ej: ABC-123" maxlength="10">
+      </div>
+      <div class="total-box">
+        <span>Total a cobrar:</span>
+        <span id="total-display">$0.00</span>
+      </div>
+      <button id="btn-generar">Generar Ticket</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase } from './js/supabaseClient.js';
+    import { Vehiculo } from './js/Vehiculo.js';
+    import { ServicioExtra } from './js/ServicioExtra.js';
+    import { Ticket } from './js/Ticket.js';
+
+    // Verificar sesión
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) window.location.href = 'index.html';
+
+    // Cerrar sesión
+    document.getElementById('btn-logout').addEventListener('click', async () => {
+      await supabase.auth.signOut();
+      window.location.href = 'index.html';
+    });
+
+    let vehiculoActual = null;
+    let extrasSeleccionados = [];
+
+    // Cargar categorías
+    const { data: categorias } = await supabase.from('cat_categorias').select('*');
+    const selectCat = document.getElementById('select-categoria');
+    categorias.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.id_categoria;
+      opt.textContent = c.nombre_tipo;
+      selectCat.appendChild(opt);
+    });
+
+    // Cargar extras
+    const { data: extras } = await supabase.from('cat_servicios_extras').select('*');
+    const extrasLista = document.getElementById('extras-lista');
+    extras.forEach(e => {
+      const div = document.createElement('div');
+      div.className = 'extra-item';
+      div.innerHTML = `<label><input type="checkbox" data-id="${e.id_extra}" data-precio="${e.precio_fijo}" data-desc="${e.descripcion}"> ${e.descripcion} <span>$${e.precio_fijo}</span></label>`;
+      extrasLista.appendChild(div);
+    });
+
+    // Al seleccionar categoría → cargar modalidades
+    selectCat.addEventListener('change', async () => {
+      const idCat = selectCat.value;
+      if (!idCat) return;
+
+      vehiculoActual = new Vehiculo(idCat, selectCat.options[selectCat.selectedIndex].text);
+
+      const { data: precios } = await supabase
+        .from('matriz_precios_base')
+        .select('*')
+        .eq('id_categoria', idCat);
+
+      const contenedor = document.getElementById('modalidades');
+      contenedor.innerHTML = '';
+      precios.forEach(p => {
+        const btn = document.createElement('button');
+        btn.className = 'btn-modalidad';
+        btn.textContent = `${p.modalidad} — $${p.monto}`;
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.btn-modalidad').forEach(b => b.classList.remove('activo'));
+          btn.classList.add('activo');
+          vehiculoActual.setPrecioBase(parseFloat(p.monto), p.modalidad);
+          actualizarTotal();
+        });
+        contenedor.appendChild(btn);
+      });
+    });
+
+    // Extras checkboxes
+    document.getElementById('extras-lista').addEventListener('change', (e) => {
+      if (!e.target.matches('input[type=checkbox]')) return;
+      const { id, precio, desc } = e.target.dataset;
+      if (e.target.checked) {
+        extrasSeleccionados.push(new ServicioExtra(parseInt(id), desc, parseFloat(precio)));
+      } else {
+        extrasSeleccionados = extrasSeleccionados.filter(ex => ex.idExtra !== parseInt(id));
+      }
+      actualizarTotal();
+    });
+
+    function actualizarTotal() {
+      if (!vehiculoActual || !vehiculoActual.precioBase) return;
+      const ticket = new Ticket(vehiculoActual, '');
+      extrasSeleccionados.forEach(ex => ticket.agregarExtra(ex));
+      document.getElementById('total-display').textContent = `$${ticket.calcularTotal().toFixed(2)}`;
+    }
+
+    // Generar ticket
+    document.getElementById('btn-generar').addEventListener('click', async () => {
+      const placa = document.getElementById('input-placa').value.trim();
+      if (!vehiculoActual || !vehiculoActual.precioBase) return alert('Selecciona vehículo y modalidad');
+      if (!placa) return alert('Ingresa la placa del vehículo');
+
+      const ticket = new Ticket(vehiculoActual, placa);
+      extrasSeleccionados.forEach(ex => ticket.agregarExtra(ex));
+
+      try {
+        const resultado = await ticket.guardarEnSupabase(supabase);
+        localStorage.setItem('ultimo_ticket', JSON.stringify({
+          folio: resultado.folio,
+          fecha: resultado.fecha_hora,
+          placa,
+          vehiculo: vehiculoActual.nombreTipo,
+          modalidad: vehiculoActual.modalidad,
+          precioBase: vehiculoActual.precioBase,
+          extras: extrasSeleccionados,
+          total: ticket.calcularTotal()
+        }));
+        window.location.href = 'ticket.html';
+      } catch (err) {
+        alert('Error al guardar: ' + err.message);
+      }
+    });
+  </script>
+
+</body>
+</html>
